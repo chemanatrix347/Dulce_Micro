@@ -1,0 +1,60 @@
+/* ==========================================================================
+   Dulce Micro — Design Tokens
+   Esquema de armonía: análogo (rosa ~338° + morado ~275°, franja rosa-violeta)
+   Todas las combinaciones texto/fondo verificadas contra WCAG 2.1 AA (4.5:1)
+   ========================================================================== */
+
+:root {
+    /* ---- Marca: tonos claros (decorativos, fondos, degradados) ---- */
+    --dm-rosa:            #f7a8c4;  /* usar solo con texto oscuro encima */
+    --dm-morado:          #c9a0dc;  /* usar solo con texto oscuro encima */
+    --dm-rosa-fuerte:     #e685a8;  /* usar solo con texto oscuro encima */
+    --dm-morado-fuerte:   #a879c9;  /* solo para UI grande/iconos (3:1), no texto pequeño */
+
+    /* ---- Marca: tonos oscuros (para texto blanco encima, AAA) ---- */
+    --dm-rosa-oscuro:     #941E4A;  /* 8.3:1 con blanco */
+    --dm-morado-oscuro:   #603380;  /* 9.2:1 con blanco */
+
+    /* ---- Superficie (el 60% de la pantalla) ---- */
+    --superficie:         #FDF3F8;
+    --superficie-alta:    #FFFFFF;
+
+    /* ---- Texto (12.65:1 sobre --superficie, AAA) ---- */
+    --texto:              #3A2545;
+    --texto-tenue:        #6b5876;
+
+    /* ---- Acción y acento (el 10%) ---- */
+    --color-accion:       #8A5AAE;  /* 5.05:1 sobre blanco, AA */
+
+    /* ---- Semánticos de sistema ---- */
+    --exito:              #2E7D32;
+    --advertencia:        #A85E00;
+    --error:              #B3261E;
+    --info:               #15506B;
+}
+
+/* ==========================================================================
+   Guía de uso rápida
+   ========================================================================== */
+
+/* Fondos claros (--dm-rosa, --dm-morado, --dm-rosa-fuerte) van SIEMPRE
+   con texto oscuro (--texto) encima, nunca con blanco. */
+
+/* Elementos donde el texto SÍ debe ser blanco (sidebar activo, topbar,
+   botones de acción sobre la marca) usan las versiones oscuras:
+   --dm-rosa-oscuro / --dm-morado-oscuro, en vez de las claras. */
+
+/* Ejemplo de corrección para el sidebar y topbar actuales: */
+/*
+.sidebar {
+    background: linear-gradient(180deg, var(--dm-rosa-oscuro) 0%, var(--dm-morado-oscuro) 100%);
+}
+.topbar {
+    background: linear-gradient(90deg, var(--dm-rosa-oscuro) 0%, var(--dm-morado-oscuro) 100%);
+}
+.topbar .btn-outline-light {
+    background: var(--dm-morado-oscuro);
+    border-color: var(--dm-morado-oscuro);
+    color: #fff;
+}
+*/
