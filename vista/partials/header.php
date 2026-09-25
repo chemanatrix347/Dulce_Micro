@@ -49,19 +49,16 @@ $paginaActual = basename($_SERVER['PHP_SELF']);
             --dm-morado: #c9a0dc;
             --dm-rosa-fuerte: #e685a8;
             --dm-morado-fuerte: #a879c9;
+            --dm-rosa-oscuro: #941E4A;
+            --dm-morado-oscuro: #603380;
         }
         body { background-color: #fdf3f8; }
         #wrapper { display: flex; align-items: stretch; min-height: 100vh; }
 
         /* ---- Sidebar ---- */
         .sidebar {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            width: 224px;
-            flex-shrink: 0;
-            background: linear-gradient(180deg, var(--dm-rosa) 0%, var(--dm-morado) 100%);
-        }
+    background: linear-gradient(180deg, var(--dm-rosa-oscuro) 0%, var(--dm-morado-oscuro) 100%);
+}
         .sidebar .sidebar-brand {
             padding: 1.2rem 1rem;
             color: #fff;
@@ -104,19 +101,18 @@ $paginaActual = basename($_SERVER['PHP_SELF']);
 
         /* ---- Topbar ---- */
         .topbar {
-            background: linear-gradient(90deg, var(--dm-rosa) 0%, var(--dm-morado) 100%);
-            box-shadow: 0 .15rem 1.75rem rgba(0,0,0,.06);
-        }
+    background: linear-gradient(90deg, var(--dm-rosa-oscuro) 0%, var(--dm-morado-oscuro) 100%);
+}
         .topbar .btn-outline-light {
-            background: var(--dm-morado-fuerte);
-            border-color: var(--dm-morado-fuerte);
-            color: #fff;
-        }
-        .topbar .btn-outline-light:hover {
-            background: var(--dm-rosa-fuerte);
-            border-color: var(--dm-rosa-fuerte);
-            color: #fff;
-        }
+    background: var(--dm-morado-oscuro);
+    border-color: var(--dm-morado-oscuro);
+    color: #fff;
+}
+.topbar .btn-outline-light:hover {
+    background: var(--dm-rosa-oscuro);
+    border-color: var(--dm-rosa-oscuro);
+    color: #fff;
+}
 
         #content-wrapper {
     flex: 1;
@@ -204,7 +200,7 @@ $paginaActual = basename($_SERVER['PHP_SELF']);
             <div class="modal fade" id="modalAvatar" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
-                        <div class="modal-header" style="background: linear-gradient(90deg, var(--dm-rosa), var(--dm-morado)); color:#fff;">
+                        <div class="modal-header" style="background: linear-gradient(90deg, var(--dm-rosa-oscuro), var(--dm-morado-oscuro)); color:#fff;">
                             <h5 class="modal-title">Elige tu foto de perfil</h5>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                         </div>
