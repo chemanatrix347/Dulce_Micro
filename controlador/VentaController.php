@@ -18,7 +18,8 @@ require_once __DIR__ . "/../config/conexion.php";
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Verificacion CSRF: el token del formulario debe coincidir con el de la sesion
-    if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+    if (empty($_SESSION['csrf_token']) || !is_string($_POST['csrf_token'] ?? null)
+        || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
         die("Token de seguridad invalido. Recarga la pagina e intenta de nuevo.");
     }
 
@@ -112,6 +113,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $pago = new Pago();
     $pago->crear_pago($idPedido, $idMetodoPago, $monto, $idEstadoPago, $fechaPago);
+
+    // La venta y el pago ya fueron registrados. Un fallo de correo no los revierte.
+    // Se ejecuta aquí, nunca al abrir/imprimir/recargar la factura.
+    $avisoCorreo = ['estado' => 'error', 'numero' => (string)$idPedido];
+    try {
+        require_once __DIR__ . '/factura_pos_lib.php';
+        $avisoCorreo = enviarFacturaPOS($conn, (int)$idPedido);
+    } catch (\Throwable $e) {
+        error_log('Correo POS, pedido ' . (int)$idPedido . ': ' . $e->getMessage());
+    }
+    $_SESSION['pos_factura_resultados'][(int)$idPedido] = $avisoCorreo;
 
     header("Location: ../vista/nuevaventa.php?exito=1&id_pedido=" . $idPedido);
     exit();

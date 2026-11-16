@@ -536,6 +536,32 @@ function enviarFacturaPorCorreo(PDO $conn, string $orden, int $idCliente): array
         return [false, 'No encontramos ese pedido.', ''];
     }
 
+    try {
+        $resultado = enviarFacturaPreparada($d, generarFacturaPDF($d));
+    } catch (\Throwable $e) {
+        error_log('Factura web: ' . $e->getMessage());
+        return [false, 'No pudimos enviar la factura por correo.', $e->getMessage()];
+    }
+    if (!$resultado[0]) {
+        return $resultado;
+    }
+
+    $conn->prepare(
+        'UPDATE pedido_web
+            SET factura_enviada = 1
+          WHERE numero_orden = ?'
+    )->execute([$orden]);
+
+    return [true, 'Factura enviada.', ''];
+}
+
+/** Transporte común para web y POS. No modifica pedidos ni inicia sesiones. */
+function enviarFacturaPreparada(array $d, string $pdf, ?string $cuerpo = null): array
+{
+    $orden = (string)$d['pedido']['numero_orden'];
+    if (!filter_var($d['pedido']['correo_factura'] ?? '', FILTER_VALIDATE_EMAIL)) {
+        return [false, 'El cliente no tiene un correo válido.', ''];
+    }
     $cfg = is_file(__DIR__ . '/mail_config.php')
         ? require __DIR__ . '/mail_config.php'
         : [];
@@ -565,7 +591,7 @@ function enviarFacturaPorCorreo(PDO $conn, string $orden, int $idCliente): array
 
     try {
 
-        $pdf = generarFacturaPDF($d);
+
         $puerto = (int)($cfg['puerto'] ?? 587);
 
         $mail = new PHPMailer(true);
@@ -585,7 +611,7 @@ function enviarFacturaPorCorreo(PDO $conn, string $orden, int $idCliente): array
         $mail->Timeout = 15;
 
         $mail->setFrom(
-            $cfg['remitente'] ?: $cfg['usuario'],
+            ($cfg['remitente'] ?? '') ?: $cfg['usuario'],
             $cfg['nombre'] ?? NEGOCIO_NOMBRE
         );
 
@@ -600,7 +626,7 @@ function enviarFacturaPorCorreo(PDO $conn, string $orden, int $idCliente): array
             'Tu factura de ' . NEGOCIO_NOMBRE .
             ' - Pedido ' . $orden;
 
-        $mail->Body = cuerpoCorreoFactura($d);
+        $mail->Body = $cuerpo ?? cuerpoCorreoFactura($d);
 
         $mail->AltBody =
             'Gracias por tu compra en ' . NEGOCIO_NOMBRE . '. ' .
@@ -641,7 +667,9 @@ function enviarFacturaPorCorreo(PDO $conn, string $orden, int $idCliente): array
             'application/pdf'
         );
 
-        $mail->send();
+        if (!$mail->send()) {
+            throw new \RuntimeException('El servidor de correo no aceptó el envío.');
+        }
 
     } catch (\Throwable $e) {
 
@@ -656,12 +684,6 @@ function enviarFacturaPorCorreo(PDO $conn, string $orden, int $idCliente): array
             $e->getMessage()
         ];
     }
-
-    $conn->prepare(
-        'UPDATE pedido_web
-            SET factura_enviada = 1
-          WHERE numero_orden = ?'
-    )->execute([$orden]);
 
     return [true, 'Factura enviada.', ''];
 }
