@@ -161,6 +161,38 @@ if (!empty($factura['estado_pago'])) {
 }
 $pdf->Cell(0, 6, $pagoTxt, 0, 1);
 
+// Mostrar efectivo recibido y vueltos en el PDF.
+if (
+    stripos((string) ($factura['metodo_pago'] ?? ''), 'efectivo') !== false
+    && isset($factura['efectivo_recibido'], $factura['cambio'])
+) {
+    $pdf->Ln(2);
+    $pdf->SetFont('Arial', '', 9);
+    $pdf->SetTextColor(60, 40, 80);
+
+    $pdf->Cell(
+        0,
+        6,
+        dmPosTexto('Efectivo recibido: ')
+            . dmPosCOP($factura['efectivo_recibido']),
+        0,
+        1
+    );
+
+    $pdf->SetFont('Arial', 'B', 9);
+
+    $pdf->Cell(
+        0,
+        6,
+        dmPosTexto('Vueltos: ')
+            . dmPosCOP($factura['cambio']),
+        0,
+        1
+    );
+
+    $pdf->SetFont('Arial', '', 9);
+}
+
 // ---- Dedicatoria / notas (solo si existen) ----
 if (!empty($factura['notas'])) {
     $pdf->Ln(3);

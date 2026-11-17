@@ -114,6 +114,15 @@ body{background:radial-gradient(ellipse at top left,#fce1ed,transparent 50%),rad
         <a href="/Dulce_Micro/controlador/FacturaPDF.php?id_pedido=<?= (int) $_GET['id_pedido'] ?>" target="_blank" class="btn btn-sm btn-success">
             <i class="fa-solid fa-print"></i> Imprimir factura
         </a>
+        <a
+    href="/Dulce_Micro/controlador/FacturaTicket.php?id_pedido=<?= (int) $_GET['id_pedido'] ?>"
+    target="_blank"
+    rel="noopener"
+    class="btn btn-sm btn-success"
+>
+    <i class="fa-solid fa-print"></i>
+    Imprimir tirilla
+</a>
     </div>
 <?php endif; ?>
 
@@ -277,6 +286,7 @@ body{background:radial-gradient(ellipse at top left,#fce1ed,transparent 50%),rad
     <input type="hidden" name="fecha_pago" value="<?= date('Y-m-d') ?>">
     <input type="hidden" name="id_estado_pedido" id="inputIdEstadoPedido">
     <input type="hidden" name="id_estado_pago" id="inputIdEstadoPago">
+    <input type="hidden" name="efectivo_recibido" id="inputEfectivoRecibido">
 </form>
 
 <script>
@@ -683,9 +693,16 @@ function confirmarVenta() {
     document.getElementById('inputIdEstadoPedido').value = estado.estadoPedido.id_estado_pedido;
     document.getElementById('inputIdEstadoPago').value = estado.estadoPago.id_estado_pago;
 
+        document.getElementById('inputEfectivoRecibido').value =
+        estado.metodoPago.metodo_pago.toLowerCase().includes('efectivo')
+            ? String(estado.montoRecibido)
+            : '';
+
     enviandoVenta = true;
     const boton = document.getElementById('btnConfirmarVenta');
-    boton.disabled = true; boton.textContent = 'Registrando venta…';
+    boton.disabled = true;
+    boton.textContent = 'Registrando venta…';
+
     document.getElementById('formVenta').submit();
 }
 
@@ -708,6 +725,49 @@ renderEstadosPedido();
 modoCliente('existente');
 irPaso(1);
 </script>
+<?php
+$idTicketPOS = filter_input(INPUT_GET, 'id_pedido', FILTER_VALIDATE_INT);
+?>
 
+<?php if (isset($_GET['exito']) && $idTicketPOS && $idTicketPOS > 0): ?>
+<script>
+(() => {
+    const idPedido = <?= (int) $idTicketPOS ?>;
+    const clave = 'dulce_micro_ticket_' + idPedido;
+
+    try {
+        if (sessionStorage.getItem(clave)) return;
+    } catch (error) {}
+
+    const marco = document.createElement('iframe');
+    marco.title = 'Impresión de tirilla POS';
+    marco.style.cssText =
+        'position:fixed;left:-9999px;top:0;width:57mm;height:1px;border:0;';
+
+    marco.onload = () => {
+        try {
+            const ventana = marco.contentWindow;
+
+            if (!ventana.document.getElementById('tirillaPOS')) return;
+
+            ventana.focus();
+            ventana.print();
+
+            try {
+                sessionStorage.setItem(clave, '1');
+            } catch (error) {}
+        } catch (error) {
+            console.error('No se pudo abrir la impresión:', error);
+        }
+    };
+
+    marco.src =
+        '/Dulce_Micro/controlador/FacturaTicket.php?id_pedido=' +
+        encodeURIComponent(idPedido);
+
+    document.body.appendChild(marco);
+})();
+</script>
+<?php endif; ?>
 </body>
 </html>

@@ -73,6 +73,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         die("Faltan datos de la venta (producto, estado, metodo de pago o estado del pago).");
     }
 
+    // Consultar el método real de pago.
+$stmtMetodo = $conn->prepare(
+    "SELECT metodo_pago
+     FROM metodos_pago
+     WHERE id_metodos_pago = :id"
+);
+$stmtMetodo->execute([':id' => $idMetodoPago]);
+$nombreMetodo = $stmtMetodo->fetchColumn();
+
+if ($nombreMetodo === false) {
+    die("El método de pago seleccionado no existe.");
+}
+
+$esEfectivo = stripos((string) $nombreMetodo, 'efectivo') !== false;
+$efectivoRecibido = null;
+
+if ($esEfectivo) {
+    $valorRecibido = $_POST['efectivo_recibido'] ?? null;
+
+    // Recibir un número sin separadores de miles.
+    if (
+        !is_string($valorRecibido) ||
+        !preg_match('/^\d{1,10}(?:\.\d{1,2})?$/D', $valorRecibido)
+    ) {
+        die("Indica un monto de efectivo recibido válido.");
+    }
+
+    $efectivoRecibido = $valorRecibido;
+}
+
+try {
     $ok = $pedido->crear_pedido(
         $idCliente,
         $fechaPedido,
@@ -82,8 +113,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $idEstadoPedido,
         $idMetodoPago,
         $fechaPago,
-        null // id_repostera_asignada: se asigna despues desde el modulo de Pedidos
+        null,
+        $efectivoRecibido
     );
+} catch (\InvalidArgumentException $e) {
+    http_response_code(400);
+    exit(htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8'));
+}
 
     if (!$ok) {
         die("No se pudo registrar la venta. Verifica que el producto exista y este activo.");

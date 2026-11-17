@@ -35,7 +35,8 @@ class PedidoCompleto
         $id_estado_pedido,
         $id_metodo_pago,
         $fecha_pago,
-        $id_repostera_asignada
+        $id_repostera_asignada,
+        $efectivo_recibido = null
     ) {
 
         // Obtener información actual del producto
@@ -65,7 +66,43 @@ class PedidoCompleto
         $precio_unitario = $producto['precio_base'];
 
         // Calcular subtotal
-        $subtotal = $precio_unitario * $cantidad;
+$subtotal = $precio_unitario * $cantidad;
+
+// Calcular el efectivo recibido y los vueltos.
+$cambio = null;
+
+if ($efectivo_recibido !== null) {
+    $valorRecibido = (string) $efectivo_recibido;
+
+    if (!preg_match('/^\d{1,10}(?:\.\d{1,2})?$/D', $valorRecibido)) {
+        throw new \InvalidArgumentException(
+            "El efectivo recibido no es válido."
+        );
+    }
+
+    $recibidoCentavos = (int) round((float) $valorRecibido * 100);
+    $totalCentavos = (int) round($subtotal * 100);
+
+    if ($recibidoCentavos < $totalCentavos) {
+        throw new \InvalidArgumentException(
+            "El efectivo recibido es menor al total de la venta."
+        );
+    }
+
+    $efectivo_recibido = number_format(
+        $recibidoCentavos / 100,
+        2,
+        '.',
+        ''
+    );
+
+    $cambio = number_format(
+        ($recibidoCentavos - $totalCentavos) / 100,
+        2,
+        '.',
+        ''
+    );
+}
 
         // Codigo de pedido legible y unico: DM- + fecha + 4 caracteres al azar
         do {
@@ -94,6 +131,8 @@ class PedidoCompleto
                 id_metodo_pago,
                 fecha_pago,
                 id_repostera_asignada,
+                efectivo_recibido,
+                cambio,
                 estado
             )
             VALUES (
@@ -112,6 +151,8 @@ class PedidoCompleto
                 :id_metodo_pago,
                 :fecha_pago,
                 :id_repostera_asignada,
+                :efectivo_recibido,
+                :cambio,
                 1
             )
         ";
@@ -133,6 +174,18 @@ class PedidoCompleto
         $stmt->bindParam(':id_metodo_pago', $id_metodo_pago);
         $stmt->bindParam(':fecha_pago', $fecha_pago);
         $stmt->bindParam(':id_repostera_asignada', $id_repostera_asignada);
+
+        $stmt->bindValue(
+    ':efectivo_recibido',
+    $efectivo_recibido,
+    $efectivo_recibido === null ? PDO::PARAM_NULL : PDO::PARAM_STR
+);
+
+$stmt->bindValue(
+    ':cambio',
+    $cambio,
+    $cambio === null ? PDO::PARAM_NULL : PDO::PARAM_STR
+);
 
         return $stmt->execute();
     }
