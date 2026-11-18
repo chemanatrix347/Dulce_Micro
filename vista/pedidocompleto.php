@@ -1,1218 +1,182 @@
 <?php
-
-require_once __DIR__ . "/../modelo/pedidocompleto.php";
-require_once __DIR__ . "/../modelo/producto.php";
-
-$pedidoCompleto = new PedidoCompleto();
-$productoModel = new Producto();
-
-$listaPedidoCompleto = $pedidoCompleto->leer_pedidos();
-$listaProductos = $productoModel->leer_productos();
-
-$registroEditando = null;
-
-if (isset($_GET['editar'])) {
-    $registroEditando = $pedidoCompleto->buscar_pedido($_GET['editar']);
-}
-
+require_once __DIR__ . '/../modelo/pedidocompleto.php';
+require_once __DIR__ . '/../modelo/producto.php';
+require_once __DIR__ . '/../modelo/clientes.php';
+require_once __DIR__ . '/../modelo/estadopedido.php';
+require_once __DIR__ . '/../modelo/metodospago.php';
+require_once __DIR__ . '/../modelo/reposteras.php';
 include __DIR__ . '/partials/header.php';
 
-
-
-/*
-|--------------------------------------------------------------------------
-| BUSQUEDA, ORDEN Y PAGINACION
-|--------------------------------------------------------------------------
-*/
-
-$columnasValidas = [
-    'id_pedido',
-    'id_producto',
-    'id_cliente',
-    'fecha_pedido',
-    'fecha_estimada_entrega',
-    'cantidad',
-    'precio_unitario',
-    'subtotal',
-    'id_estado_pedido',
-    'id_metodo_pago',
-    'fecha_pago',
-    'id_repostera_asignada'
+function dmH($value) { return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+function dmCOP($value) {
+    $dec = round((float)$value, 2);
+    return '$' . number_format($dec, floor($dec) == $dec ? 0 : 2, ',', '.');
+}
+function dmClave($texto) {
+    return strtolower(strtr(trim($texto), ['ó'=>'o','Ó'=>'o','í'=>'i','Í'=>'i','á'=>'a','Á'=>'a','é'=>'e','É'=>'e','ú'=>'u','Ú'=>'u']));
+}
+function dmGet($name) { return is_string($_GET[$name] ?? null) ? trim($_GET[$name]) : ''; }
+$modelo = new PedidoCompleto();
+$pedidos = $modelo->leer_pedidos();
+$productos = array_column((new Producto())->leer_productos(), null, 'id_producto');
+$catalogos = [
+    'id_cliente' => array_column((new Cliente())->leer_clientes(), 'nombre', 'id_cliente'),
+    'id_estado_pedido' => array_column((new EstadoPedido())->leer_estados_pedido(), 'estado_pedido', 'id_estado_pedido'),
+    'id_metodo_pago' => array_column((new MetodoPago())->leer_metodos_pago(), 'metodo_pago', 'id_metodos_pago'),
+    'id_repostera_asignada' => array_column((new Repostera())->leer_reposteras(), 'nombre_repostera', 'id_repostera_asignada')
 ];
-
-$busqueda = trim($_GET['buscar'] ?? '');
-
-$ordenCol = in_array(
-    $_GET['orden'] ?? '',
-    $columnasValidas
-) ? $_GET['orden'] : 'id_pedido';
-
-$ordenDir = ($_GET['dir'] ?? 'asc') === 'desc'
-    ? 'desc'
-    : 'asc';
-
-$porPagina = 10;
-
-$paginaActual = max(
-    1,
-    (int)($_GET['pagina'] ?? 1)
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| FILTRO DE BUSQUEDA
-|--------------------------------------------------------------------------
-*/
-
-if ($busqueda !== '') {
-
-    $listaPedidoCompleto = array_filter(
-        $listaPedidoCompleto,
-        function ($item) use ($busqueda) {
-
-            foreach ($item as $valor) {
-
-                if (
-                    stripos(
-                        (string)$valor,
-                        $busqueda
-                    ) !== false
-                ) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    );
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| ORDEN
-|--------------------------------------------------------------------------
-*/
-
-usort(
-    $listaPedidoCompleto,
-    function ($a, $b) use ($ordenCol, $ordenDir) {
-
-        $cmp = strnatcasecmp(
-            (string)($a[$ordenCol] ?? ''),
-            (string)($b[$ordenCol] ?? '')
-        );
-
-        return $ordenDir === 'desc'
-            ? -$cmp
-            : $cmp;
-    }
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| PAGINACION
-|--------------------------------------------------------------------------
-*/
-
-$totalRegistros = count($listaPedidoCompleto);
-
-$totalPaginas = max(
-    1,
-    (int)ceil($totalRegistros / $porPagina)
-);
-
-$paginaActual = min(
-    $paginaActual,
-    $totalPaginas
-);
-
-$listaPagina = array_slice(
-    array_values($listaPedidoCompleto),
-    ($paginaActual - 1) * $porPagina,
-    $porPagina
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| FUNCION PARA ORDENAR COLUMNAS
-|--------------------------------------------------------------------------
-*/
-
-function enlaceOrden_PedidoCompleto(
-    $col,
-    $ordenCol,
-    $ordenDir
-) {
-
-    $dir = (
-        $ordenCol === $col &&
-        $ordenDir === 'asc'
-    )
-        ? 'desc'
-        : 'asc';
-
-    $params = array_merge(
-        $_GET,
-        [
-            'orden' => $col,
-            'dir' => $dir
-        ]
-    );
-
-    return '?' . http_build_query($params);
-}
-
+$labels = ['id_cliente'=>'Cliente','id_estado_pedido'=>'Estado','id_metodo_pago'=>'Método de pago','id_repostera_asignada'=>'Repostera'];
+$nombre = static function($campo, $id) use ($catalogos, $labels) {
+    return $catalogos[$campo][$id] ?? ($id ? $labels[$campo] . ' #' . $id . ' (histórico)' : 'Sin asignar');
+};
+$hoy = (new DateTimeImmutable('now', new DateTimeZone('America/Bogota')))->format('Y-m-d');
+$vista = in_array(dmGet('vista'), ['todos','proximas'], true) ? dmGet('vista') : 'hoy';
+$buscar = dmGet('buscar');
+$estado = dmGet('estado');
+$repostera = dmGet('repostera');
+$params = compact('vista','buscar','estado','repostera');
+$url = static function($cambios) use ($params) { return '?' . http_build_query(array_merge($params, $cambios)); };
+$editar = dmGet('editar') !== '' ? $modelo->buscar_pedido((int)dmGet('editar')) : null;
+$aviso = $_SESSION['pedidos_aviso'] ?? null;
+unset($_SESSION['pedidos_aviso']);
+$filas = array_filter($pedidos, static function($p) use ($vista,$buscar,$estado,$repostera,$hoy,$nombre) {
+    $dia = substr((string)$p['fecha_estimada_entrega'], 0, 10);
+    $texto = implode(' ', [$p['codigo_pedido'], '#'.$p['id_pedido'], $p['nombre_producto'], $nombre('id_cliente',$p['id_cliente'])]);
+    return ($vista === 'todos' || ($vista === 'hoy' ? $dia === $hoy : $dia > $hoy))
+        && ($estado === '' || (string)$p['id_estado_pedido'] === $estado)
+        && ($repostera === '' || (string)$p['id_repostera_asignada'] === $repostera)
+        && str_contains(dmClave($texto), dmClave($buscar));
+});
+usort($filas, static function($a,$b) use ($vista) {
+    return ($vista === 'proximas' ? strcmp($a['fecha_estimada_entrega'],$b['fecha_estimada_entrega']) : 0)
+        ?: ((int)$b['id_pedido'] <=> (int)$a['id_pedido']);
+});
+$paginas = max(1,(int)ceil(count($filas)/10));
+$pagina = min($paginas,max(1,(int)dmGet('pagina')));
+$estados = [];
+foreach ($catalogos['id_estado_pedido'] as $id => $etiqueta) { $estados[dmClave($etiqueta)] = $id; }
+$pasos = ['pendiente'=>['en preparacion','Iniciar preparación'], 'en preparacion'=>['listo para entregar','Marcar como listo'],
+    'listo para entregar'=>['entregado','Confirmar entrega']];
+$accionUrl = '../controlador/PedidoCompletoController.php';
+function dmCampos($accion,$id,$vista) { ?>
+<input type="hidden" name="csrf_token" value="<?= dmH($_SESSION['csrf_token']) ?>">
+<input type="hidden" name="accion" value="<?= dmH($accion) ?>"><input type="hidden" name="vista" value="<?= dmH($vista) ?>">
+<?php if ($id) { ?><input type="hidden" name="id" value="<?= (int)$id ?>"><?php } }
 ?>
-
-<h1 class="mb-4">Gestión de Pedidos</h1>
-
-
-<!-- ========================================================= -->
-<!-- FORMULARIO DE EDICIÓN                                     -->
-<!-- ========================================================= -->
-
-<?php if ($registroEditando): ?>
-
-<form
-    action="../controlador/PedidoCompletoController.php"
-    method="POST"
-    class="row g-3 mb-4"
-    onsubmit="return validarFormulario_PedidoCompleto(this);"
-    novalidate
->
-
-    <input
-        type="hidden"
-        name="accion"
-        value="actualizar"
-    >
-
-    <input
-        type="hidden"
-        name="csrf_token"
-        value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"
-    >
-
-    <input
-        type="hidden"
-        name="id"
-        value="<?= htmlspecialchars($registroEditando['id_pedido']) ?>"
-    >
-
-
-    <!-- CLIENTE -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            ID cliente
-        </label>
-
-        <input
-            type="number"
-            name="id_cliente"
-            class="form-control"
-            value="<?= htmlspecialchars($registroEditando['id_cliente']) ?>"
-            required
-        >
-
-    </div>
-
-
-    <!-- FECHA PEDIDO -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Fecha pedido
-        </label>
-
-        <input
-            type="date"
-            name="fecha_pedido"
-            class="form-control"
-            value="<?= htmlspecialchars($registroEditando['fecha_pedido']) ?>"
-            required
-        >
-
-    </div>
-
-
-    <!-- FECHA ENTREGA -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Fecha estimada entrega
-        </label>
-
-        <input
-            type="date"
-            name="fecha_estimada_entrega"
-            class="form-control"
-            value="<?= htmlspecialchars($registroEditando['fecha_estimada_entrega']) ?>"
-            required
-        >
-
-    </div>
-
-
-    <!-- PRODUCTO -->
-
-    <div class="col-md-8">
-
-        <label class="form-label">
-            Producto
-        </label>
-
-        <select
-            name="id_producto"
-            id="productoEditar"
-            class="form-select"
-            onchange="actualizarProductoEditar()"
-            required
-        >
-
-            <option value="">
-                -- Seleccione un producto --
-            </option>
-
-            <?php foreach ($listaProductos as $producto): ?>
-
-                <option
-                    value="<?= htmlspecialchars($producto['id_producto']) ?>"
-                    data-precio="<?= htmlspecialchars($producto['precio_base']) ?>"
-                    <?= (
-                        isset($registroEditando['id_producto']) &&
-                        $registroEditando['id_producto'] == $producto['id_producto']
-                    ) ? 'selected' : '' ?>
-                >
-
-                    <?= htmlspecialchars($producto['nombre_producto']) ?>
-
-                </option>
-
-            <?php endforeach; ?>
-
-        </select>
-
-    </div>
-
-
-    <!-- CANTIDAD -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Cantidad
-        </label>
-
-        <input
-            type="number"
-            name="cantidad"
-            id="cantidadEditar"
-            class="form-control"
-            min="1"
-            value="<?= htmlspecialchars($registroEditando['cantidad']) ?>"
-            oninput="calcularSubtotalEditar()"
-            required
-        >
-
-    </div>
-
-
-    <!-- PRECIO -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Precio unitario
-        </label>
-
-        <input
-            type="number"
-            step="0.01"
-            name="precio_unitario"
-            id="precioEditar"
-            class="form-control"
-            value="<?= htmlspecialchars($registroEditando['precio_unitario']) ?>"
-            readonly
-        >
-
-    </div>
-
-
-    <!-- SUBTOTAL -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Subtotal
-        </label>
-
-        <input
-            type="number"
-            step="0.01"
-            name="subtotal"
-            id="subtotalEditar"
-            class="form-control"
-            value="<?= htmlspecialchars($registroEditando['subtotal']) ?>"
-            readonly
-        >
-
-    </div>
-
-
-    <!-- ESTADO -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            ID estado pedido
-        </label>
-
-        <input
-            type="number"
-            name="id_estado_pedido"
-            class="form-control"
-            value="<?= htmlspecialchars($registroEditando['id_estado_pedido']) ?>"
-            required
-        >
-
-    </div>
-
-
-    <!-- METODO PAGO -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            ID método pago
-        </label>
-
-        <input
-            type="number"
-            name="id_metodo_pago"
-            class="form-control"
-            value="<?= htmlspecialchars($registroEditando['id_metodo_pago']) ?>"
-            required
-        >
-
-    </div>
-
-
-    <!-- FECHA PAGO -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Fecha pago
-        </label>
-
-        <input
-            type="date"
-            name="fecha_pago"
-            class="form-control"
-            value="<?= htmlspecialchars($registroEditando['fecha_pago']) ?>"
-            required
-        >
-
-    </div>
-
-
-    <!-- REPOSTERA -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            ID repostera asignada
-        </label>
-
-        <input
-            type="number"
-            name="id_repostera_asignada"
-            class="form-control"
-            value="<?= htmlspecialchars($registroEditando['id_repostera_asignada']) ?>"
-            required
-        >
-
-    </div>
-
-
-    <div class="col-12">
-
-        <button
-            type="submit"
-            class="btn btn-primary"
-        >
-            Guardar cambios
-        </button>
-
-        <a
-            href="pedidocompleto.php"
-            class="btn btn-secondary"
-        >
-            Cancelar
-        </a>
-
-    </div>
-
-</form>
-
-
-<?php else: ?>
-
-
-<!-- ========================================================= -->
-<!-- FORMULARIO CREAR PEDIDO                                   -->
-<!-- ========================================================= -->
-
-<form
-    action="../controlador/PedidoCompletoController.php"
-    method="POST"
-    class="row g-3 mb-4"
-    onsubmit="return validarFormulario_PedidoCompleto(this);"
-    novalidate
->
-
-    <input
-        type="hidden"
-        name="accion"
-        value="crear"
-    >
-
-    <input
-        type="hidden"
-        name="csrf_token"
-        value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"
-    >
-
-
-    <!-- CLIENTE -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            ID cliente
-        </label>
-
-        <input
-            type="number"
-            name="id_cliente"
-            class="form-control"
-            min="1"
-            required
-        >
-
-    </div>
-
-
-    <!-- FECHA PEDIDO -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Fecha pedido
-        </label>
-
-        <input
-            type="date"
-            name="fecha_pedido"
-            class="form-control"
-            required
-        >
-
-    </div>
-
-
-    <!-- FECHA ENTREGA -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Fecha estimada entrega
-        </label>
-
-        <input
-            type="date"
-            name="fecha_estimada_entrega"
-            class="form-control"
-            required
-        >
-
-    </div>
-
-
-    <!-- PRODUCTO -->
-
-    <div class="col-md-8">
-
-        <label class="form-label">
-            Producto
-        </label>
-
-        <select
-            name="id_producto"
-            id="productoCrear"
-            class="form-select"
-            onchange="actualizarProductoCrear()"
-            required
-        >
-
-            <option value="">
-                -- Seleccione un producto --
-            </option>
-
-            <?php foreach ($listaProductos as $producto): ?>
-
-                <option
-                    value="<?= htmlspecialchars($producto['id_producto']) ?>"
-                    data-precio="<?= htmlspecialchars($producto['precio_base']) ?>"
-                >
-
-                    <?= htmlspecialchars($producto['nombre_producto']) ?>
-
-                </option>
-
-            <?php endforeach; ?>
-
-        </select>
-
-    </div>
-
-
-    <!-- CANTIDAD -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Cantidad
-        </label>
-
-        <input
-            type="number"
-            name="cantidad"
-            id="cantidadCrear"
-            class="form-control"
-            min="1"
-            value="1"
-            oninput="calcularSubtotalCrear()"
-            required
-        >
-
-    </div>
-
-
-    <!-- PRECIO -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Precio unitario
-        </label>
-
-        <input
-            type="number"
-            step="0.01"
-            id="precioCrear"
-            class="form-control"
-            readonly
-        >
-
-    </div>
-
-
-    <!-- SUBTOTAL -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Subtotal
-        </label>
-
-        <input
-            type="number"
-            step="0.01"
-            id="subtotalCrear"
-            class="form-control"
-            readonly
-        >
-
-    </div>
-
-
-    <!-- ESTADO -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            ID estado pedido
-        </label>
-
-        <input
-            type="number"
-            name="id_estado_pedido"
-            class="form-control"
-            min="1"
-            required
-        >
-
-    </div>
-
-
-    <!-- METODO PAGO -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            ID método pago
-        </label>
-
-        <input
-            type="number"
-            name="id_metodo_pago"
-            class="form-control"
-            min="1"
-            required
-        >
-
-    </div>
-
-
-    <!-- FECHA PAGO -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            Fecha pago
-        </label>
-
-        <input
-            type="date"
-            name="fecha_pago"
-            class="form-control"
-            required
-        >
-
-    </div>
-
-
-    <!-- REPOSTERA -->
-
-    <div class="col-md-4">
-
-        <label class="form-label">
-            ID repostera asignada
-        </label>
-
-        <input
-            type="number"
-            name="id_repostera_asignada"
-            class="form-control"
-            min="1"
-            required
-        >
-
-    </div>
-
-
-    <div class="col-12">
-
-        <button
-            type="submit"
-            class="btn btn-success"
-        >
-            Crear pedido
-        </button>
-
-    </div>
-
-</form>
-
-<?php endif; ?>
-
-
-<!-- ========================================================= -->
-<!-- BUSQUEDA                                                  -->
-<!-- ========================================================= -->
-
-<form method="GET" class="row g-2 mb-3">
-
-    <div class="col-md-4">
-
-        <input
-            type="text"
-            name="buscar"
-            class="form-control"
-            placeholder="Buscar..."
-            value="<?= htmlspecialchars($busqueda) ?>"
-        >
-
-    </div>
-
-    <input
-        type="hidden"
-        name="orden"
-        value="<?= htmlspecialchars($ordenCol) ?>"
-    >
-
-    <input
-        type="hidden"
-        name="dir"
-        value="<?= htmlspecialchars($ordenDir) ?>"
-    >
-
-    <div class="col-md-2">
-
-        <button
-            type="submit"
-            class="btn btn-outline-primary"
-        >
-            Buscar
-        </button>
-
-        <a
-            href="pedidocompleto.php"
-            class="btn btn-outline-secondary"
-        >
-            Limpiar
-        </a>
-
-    </div>
-
-</form>
-
-
-<!-- ========================================================= -->
-<!-- TABLA                                                     -->
-<!-- ========================================================= -->
-
-<div class="table-responsive">
-
-<table class="table table-striped table-bordered align-middle">
-
-    <thead class="table-dark">
-
-        <tr>
-
-            <th>
-                <a
-                    href="<?= enlaceOrden_PedidoCompleto('id_pedido', $ordenCol, $ordenDir) ?>"
-                    class="text-white text-decoration-none"
-                >
-                    ID Pedido
-                </a>
-            </th>
-
-            <th>Producto</th>
-
-            <th>Cliente</th>
-
-            <th>Fecha pedido</th>
-
-            <th>Fecha entrega</th>
-
-            <th>Cantidad</th>
-
-            <th>Precio unitario</th>
-
-            <th>Subtotal</th>
-
-            <th>Estado</th>
-
-            <th>Método pago</th>
-
-            <th>Fecha pago</th>
-
-            <th>Repostera</th>
-
-            <th>Acciones</th>
-
-        </tr>
-
-    </thead>
-
-
-    <tbody>
-
-    <?php foreach ($listaPagina as $item): ?>
-
-        <tr>
-
-            <!-- ID PEDIDO -->
-
-            <td>
-                <?= htmlspecialchars($item['id_pedido']) ?>
-            </td>
-
-
-            <!-- PRODUCTO -->
-
-            <td>
-
-                <?php if (!empty($item['nombre_producto'])): ?>
-
-                    <?= htmlspecialchars($item['nombre_producto']) ?>
-
-                <?php else: ?>
-
-                    <span class="text-muted">
-                        Producto histórico no vinculado
-                    </span>
-
-                <?php endif; ?>
-
-            </td>
-
-
-            <!-- CLIENTE -->
-
-            <td>
-                <?= htmlspecialchars($item['id_cliente']) ?>
-            </td>
-
-
-            <!-- FECHA PEDIDO -->
-
-            <td>
-                <?= htmlspecialchars($item['fecha_pedido']) ?>
-            </td>
-
-
-            <!-- FECHA ENTREGA -->
-
-            <td>
-                <?= htmlspecialchars($item['fecha_estimada_entrega']) ?>
-            </td>
-
-
-            <!-- CANTIDAD -->
-
-            <td>
-                <?= htmlspecialchars($item['cantidad']) ?>
-            </td>
-
-
-            <!-- PRECIO -->
-
-            <td>
-
-                $<?= number_format(
-                    (float)$item['precio_unitario'],
-                    2,
-                    ',',
-                    '.'
-                ) ?>
-
-            </td>
-
-
-            <!-- SUBTOTAL -->
-
-            <td>
-
-                $<?= number_format(
-                    (float)$item['subtotal'],
-                    2,
-                    ',',
-                    '.'
-                ) ?>
-
-            </td>
-
-
-            <!-- ESTADO -->
-
-            <td>
-                <?= htmlspecialchars($item['id_estado_pedido']) ?>
-            </td>
-
-
-            <!-- METODO PAGO -->
-
-            <td>
-                <?= htmlspecialchars($item['id_metodo_pago']) ?>
-            </td>
-
-
-            <!-- FECHA PAGO -->
-
-            <td>
-                <?= htmlspecialchars($item['fecha_pago']) ?>
-            </td>
-
-
-            <!-- REPOSTERA -->
-
-            <td>
-                <?= htmlspecialchars($item['id_repostera_asignada']) ?>
-            </td>
-
-
-            <!-- ACCIONES -->
-
-            <td style="white-space: nowrap;">
-
-                <a
-                    href="pedidocompleto.php?editar=<?= $item['id_pedido'] ?>"
-                    class="btn btn-sm btn-warning"
-                >
-                    <i class="fa-solid fa-pen"></i>
-                    Editar
-                </a>
-
-
-                <form
-                    action="../controlador/PedidoCompletoController.php"
-                    method="POST"
-                    style="display:inline"
-                >
-
-                    <input
-                        type="hidden"
-                        name="accion"
-                        value="eliminar"
-                    >
-
-                    <input
-                        type="hidden"
-                        name="csrf_token"
-                        value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"
-                    >
-
-                    <input
-                        type="hidden"
-                        name="id"
-                        value="<?= $item['id_pedido'] ?>"
-                    >
-
-                    <button
-                        type="submit"
-                        class="btn btn-sm btn-danger"
-                    >
-                        <i class="fa-solid fa-trash"></i>
-                        Eliminar
-                    </button>
-
-                </form>
-
-            </td>
-
-        </tr>
-
-    <?php endforeach; ?>
-
-
-    <?php if (empty($listaPagina)): ?>
-
-        <tr>
-
-            <td
-                colspan="13"
-                class="text-center text-muted"
-            >
-                Sin resultados
-            </td>
-
-        </tr>
-
-    <?php endif; ?>
-
-    </tbody>
-
-</table>
-
-</div>
-
-
-<!-- ========================================================= -->
-<!-- PAGINACION                                                -->
-<!-- ========================================================= -->
-
-<?php if ($totalPaginas > 1): ?>
-
-<nav>
-
-    <ul class="pagination">
-
-        <?php for ($p = 1; $p <= $totalPaginas; $p++): ?>
-
-            <li
-                class="page-item <?= $p === $paginaActual ? 'active' : '' ?>"
-            >
-
-                <a
-                    class="page-link"
-                    href="?<?= http_build_query(
-                        array_merge(
-                            $_GET,
-                            ['pagina' => $p]
-                        )
-                    ) ?>"
-                >
-                    <?= $p ?>
-                </a>
-
-            </li>
-
-        <?php endfor; ?>
-
-    </ul>
-
-</nav>
-
-<?php endif; ?>
-
-
-<!-- ========================================================= -->
-<!-- JAVASCRIPT                                                -->
-<!-- ========================================================= -->
-
-<script>
-
-function actualizarProductoCrear()
-{
-    const select = document.getElementById('productoCrear');
-
-    const opcion =
-        select.options[select.selectedIndex];
-
-    const precio =
-        parseFloat(
-            opcion.dataset.precio || 0
-        );
-
-    document.getElementById('precioCrear').value =
-        precio.toFixed(2);
-
-    calcularSubtotalCrear();
-}
-
-
-function calcularSubtotalCrear()
-{
-    const precio =
-        parseFloat(
-            document.getElementById('precioCrear').value || 0
-        );
-
-    const cantidad =
-        parseFloat(
-            document.getElementById('cantidadCrear').value || 0
-        );
-
-    const subtotal =
-        precio * cantidad;
-
-    document.getElementById('subtotalCrear').value =
-        subtotal.toFixed(2);
-}
-
-
-function actualizarProductoEditar()
-{
-    const select =
-        document.getElementById('productoEditar');
-
-    const opcion =
-        select.options[select.selectedIndex];
-
-    const precio =
-        parseFloat(
-            opcion.dataset.precio || 0
-        );
-
-    document.getElementById('precioEditar').value =
-        precio.toFixed(2);
-
-    calcularSubtotalEditar();
-}
-
-
-function calcularSubtotalEditar()
-{
-    const precio =
-        parseFloat(
-            document.getElementById('precioEditar').value || 0
-        );
-
-    const cantidad =
-        parseFloat(
-            document.getElementById('cantidadEditar').value || 0
-        );
-
-    const subtotal =
-        precio * cantidad;
-
-    document.getElementById('subtotalEditar').value =
-        subtotal.toFixed(2);
-}
-
-
-function validarFormulario_PedidoCompleto(form)
-{
-    let valido = true;
-
-    form.querySelectorAll('[required]').forEach(
-        function(campo)
-        {
-            if (!campo.value.trim())
-            {
-                campo.classList.add('is-invalid');
-                valido = false;
-            }
-            else
-            {
-                campo.classList.remove('is-invalid');
-            }
-        }
-    );
-
-    if (!valido)
-    {
-        alert(
-            'Por favor completa todos los campos obligatorios.'
-        );
-    }
-
-    return valido;
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| Inicializar formulario de edición
-|--------------------------------------------------------------------------
-*/
-
-document.addEventListener(
-    'DOMContentLoaded',
-    function()
-    {
-        const productoEditar =
-            document.getElementById('productoEditar');
-
-        if (productoEditar)
-        {
-            /*
-            No recalculamos automáticamente el precio
-            al abrir un pedido histórico.
-
-            El precio histórico debe conservarse.
-            */
-        }
-    }
-);
-
-</script>
-
-
+<style>
+.dm-ped{--uva:#68376f;--borde:#e7dce8;color:#332735;background:#fff7fa;border-radius:1rem;padding:clamp(.8rem,3vw,2rem);max-width:1120px;margin:auto}
+.dm-ped .dm-linea{display:flex;align-items:center;justify-content:space-between;gap:.65rem;flex-wrap:wrap}
+.dm-ped h1,.dm-ped h2{font-weight:700;letter-spacing:-.025em}.dm-ped h2{font-size:1.2rem}
+.dm-ped .dm-btn,.dm-ped .dm-tab{display:inline-block;border:1px solid var(--borde);background:white;color:var(--uva);border-radius:.75rem;padding:.55rem .85rem;text-decoration:none;font-weight:600}
+.dm-ped .dm-fuerte{background:var(--uva);color:white;border-color:var(--uva)}.dm-ped .dm-activa{background:#ede3fa}
+.dm-ped .dm-tabs,.dm-ped .dm-acciones{display:flex;flex-wrap:wrap;gap:.5rem;margin:.8rem 0}
+.dm-ped .dm-card,.dm-ped .dm-filtros{border:1px solid var(--borde);background:white;border-radius:1rem;padding:1rem;margin:.7rem 0}
+.dm-ped .dm-card{border-inline-start:4px solid #bd97c5}.dm-ped .dm-estado{padding:.3rem .65rem;border-radius:2rem;background:#eee3f4;color:#503052;font-weight:600;font-size:.85rem}
+.dm-ped .dm-entregado{background:#d9f2e1;color:#205733}.dm-ped .dm-cancelado{background:#fce3e7;color:#862637}.dm-ped .dm-pendiente{background:#fff0c9;color:#694a00}
+.dm-ped dialog{width:min(640px,95vw);max-height:90dvh;overflow:auto;border:1px solid var(--borde);border-radius:1.2rem;color:inherit;padding:1.4rem}.dm-ped dialog::backdrop{background:#26172888}
+.dm-ped .dm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}.dm-ped label{font-weight:600}.dm-ped summary{cursor:pointer;color:var(--uva);font-weight:600}
+@media(max-width:600px){.dm-ped .dm-grid{grid-template-columns:1fr}.dm-ped dialog{width:100%;max-width:100%;max-height:94dvh;margin:auto 0 0;border-radius:1.25rem 1.25rem 0 0}}
+</style>
+<section class="dm-ped" id="dm-pedidos">
+<div class="dm-linea"><h1>Pedidos</h1><button class="dm-btn dm-fuerte" data-abrir="dm-form">+ Nuevo pedido</button></div>
+<?php if ($aviso): ?><div role="status" class="alert alert-<?= dmH($aviso[0]) ?>"><?= dmH($aviso[1]) ?></div><?php endif; ?>
+<nav class="dm-tabs" aria-label="Entregas"><?php foreach (['hoy'=>'Hoy','proximas'=>'Próximas','todos'=>'Todos'] as $k=>$v): ?>
+<a class="dm-tab <?= $vista===$k?'dm-activa':'' ?>" <?= $vista===$k?'aria-current="page"':'' ?> href="<?= dmH($url(['vista'=>$k])) ?>"><?= $v ?></a><?php endforeach; ?></nav>
+<form class="dm-filtros" method="get"><input type="hidden" name="vista" value="<?= dmH($vista) ?>">
+<div class="input-group"><input class="form-control" name="buscar" aria-label="Buscar por cliente, producto o código" placeholder="Cliente, producto o código" value="<?= dmH($buscar) ?>"><button class="dm-btn">Buscar</button></div>
+<details class="mt-2" <?= $estado!==''||$repostera!==''?'open':'' ?>><summary>Filtros</summary><div class="dm-grid my-2">
+<?php foreach (['estado'=>'id_estado_pedido','repostera'=>'id_repostera_asignada'] as $key=>$campo): ?>
+<label><?= $labels[$campo] ?><select class="form-select" name="<?= $key ?>"><option value="">Todos</option><?php foreach($catalogos[$campo] as $id=>$val): ?>
+<option value="<?= (int)$id ?>" <?= (string)$id===$params[$key]?'selected':'' ?>><?= dmH($val) ?></option><?php endforeach; ?></select></label><?php endforeach; ?></div>
+<button class="dm-btn">Aplicar filtros</button> <a href="?vista=<?= $vista ?>">Limpiar</a></details></form>
+<?php if (!$filas): ?><div class="dm-card"><h2><?= $buscar || $estado || $repostera ? 'Ningún pedido coincide con los filtros' : ($vista==='hoy'?'Hoy no tienes entregas programadas':'No hay pedidos en esta vista') ?></h2><a href="?vista=todos">Ver todos los pedidos</a></div><?php endif; ?>
+<?php foreach (array_slice($filas,($pagina-1)*10,10) as $p):
+$id=(int)$p['id_pedido']; $codigo=$p['codigo_pedido'] ?: '#'.$id;
+$status=$nombre('id_estado_pedido',$p['id_estado_pedido']); $clave=dmClave($status);
+$paso=$pasos[$clave]??null; $producto=$p['nombre_producto'] ?: ($p['categoria_postre'] ?: 'Producto histórico');
+?>
+<article class="dm-card"><div class="dm-linea"><small><?= dmH($codigo) ?> · Entrega <?= dmH($p['fecha_estimada_entrega']===$hoy?'hoy':$p['fecha_estimada_entrega']) ?></small>
+<span class="dm-estado dm-<?= dmH(str_replace(' ','-',$clave)) ?>"><?= dmH($status) ?></span></div>
+<h2 class="mt-2"><?= dmH($nombre('id_cliente',$p['id_cliente'])) ?></h2>
+<div class="dm-linea"><span><?= (int)$p['cantidad'] ?> × <?= dmH($producto) ?></span><strong><?= dmCOP($p['subtotal']) ?></strong></div>
+<div class="dm-acciones">
+<?php if ($paso && isset($estados[$paso[0]])): ?>
+<form action="<?= $accionUrl ?>" method="post"><?php dmCampos('estado',$id,$vista); ?>
+<input type="hidden" name="anterior" value="<?= (int)$p['id_estado_pedido'] ?>"><input type="hidden" name="nuevo" value="<?= (int)$estados[$paso[0]] ?>"><button class="dm-btn dm-fuerte"><?= dmH($paso[1]) ?></button></form>
+<?php elseif (!in_array($clave,['entregado','cancelado'],true) && count($catalogos['id_estado_pedido'])>1): ?>
+<form action="<?= $accionUrl ?>" method="post" class="dm-linea"><?php dmCampos('estado',$id,$vista); ?>
+<input type="hidden" name="anterior" value="<?= (int)$p['id_estado_pedido'] ?>">
+<label><select required name="nuevo" class="form-select" aria-label="Nuevo estado del pedido <?= dmH($codigo) ?>"><option value="">Selecciona un estado</option>
+<?php foreach ($catalogos['id_estado_pedido'] as $eid=>$texto): if((int)$eid===(int)$p['id_estado_pedido']) continue; ?>
+<option value="<?= (int)$eid ?>"><?= dmH($texto) ?></option><?php endforeach; ?></select></label><button class="dm-btn">Cambiar estado</button></form>
+<?php endif; ?><button class="dm-btn" data-abrir="dm-det-<?= $id ?>">Ver detalle</button></div>
+<dialog id="dm-det-<?= $id ?>" aria-labelledby="titulo-<?= $id ?>"><div class="dm-linea"><h2 id="titulo-<?= $id ?>">Pedido <?= dmH($codigo) ?></h2><button class="dm-btn" data-cerrar>Cerrar</button></div>
+<p><?= dmH($status) ?></p><dl>
+<?php foreach ($labels as $campo=>$etiqueta): if($campo==='id_estado_pedido') continue; ?><dt><?= $etiqueta ?></dt><dd><?= dmH($nombre($campo,$p[$campo])) ?></dd><?php endforeach; ?>
+<dt>Producto</dt><dd><?= dmH($producto) ?> · <?= (int)$p['cantidad'] ?> × <?= dmCOP($p['precio_unitario']) ?></dd>
+<dt>Subtotal</dt><dd><?= dmCOP($p['subtotal']) ?></dd>
+<?php foreach(['fecha_pedido'=>'Fecha de pedido','fecha_estimada_entrega'=>'Entrega prevista','fecha_pago'=>'Fecha de pago'] as $k=>$label): ?><dt><?= $label ?></dt><dd><?= dmH($p[$k] ?: 'Sin registrar') ?></dd><?php endforeach; ?></dl>
+<div class="dm-acciones"><a class="dm-btn" href="<?= dmH($url(['editar'=>$id,'pagina'=>$pagina])) ?>">Editar pedido</a>
+<form class="dm-eliminar" action="<?= $accionUrl ?>" method="post" data-codigo="<?= dmH($codigo) ?>"><?php dmCampos('eliminar',$id,$vista); ?><button class="btn btn-outline-danger">Eliminar</button></form></div></dialog></article>
+<?php endforeach; ?>
+<?php if($paginas>1): ?><nav class="dm-linea" aria-label="Páginas"><?php if($pagina>1): ?><a href="<?= dmH($url(['pagina'=>$pagina-1])) ?>">Anterior</a><?php endif; ?> Página <?= $pagina ?> de <?= $paginas ?>
+<?php if($pagina<$paginas): ?><a href="<?= dmH($url(['pagina'=>$pagina+1])) ?>">Siguiente</a><?php endif; ?></nav><?php endif; ?>
 <?php
-
-include __DIR__ . '/partials/footer.php';
-
+$formularios = ['dm-form'=>[]];
+if ($editar) { $formularios['dm-editar']=$editar; }
+foreach ($formularios as $ident=>$registro):
 ?>
+<dialog id="<?= $ident ?>" aria-labelledby="<?= $ident ?>-titulo">
+<div class="dm-linea"><h2 id="<?= $ident ?>-titulo"><?= $registro?'Editar pedido '.dmH($registro['codigo_pedido'] ?: '#'.$registro['id_pedido']):'Nuevo pedido' ?></h2><button type="button" class="dm-btn" data-cerrar>Cerrar</button></div>
+<form class="dm-editor" action="<?= $accionUrl ?>" method="post" data-original="<?= dmH($registro['id_producto']??'') ?>" data-precio="<?= dmH($registro['precio_unitario']??'') ?>">
+<?php dmCampos($registro?'actualizar':'crear',$registro['id_pedido']??null,$vista); ?>
+<div class="dm-grid my-3">
+<?php foreach(['id_cliente','fecha_pedido','fecha_estimada_entrega','id_producto','cantidad','id_repostera_asignada','id_estado_pedido','id_metodo_pago','fecha_pago'] as $campo):
+if(isset($catalogos[$campo])): $actual=$registro[$campo]??''; ?>
+<label><?= $labels[$campo] ?><select class="form-select" name="<?= $campo ?>" required><option value="">Seleccionar…</option>
+<?php if($actual && !isset($catalogos[$campo][$actual])): ?><option selected value="<?= (int)$actual ?>"><?= dmH($nombre($campo,$actual)) ?></option><?php endif; ?>
+<?php foreach($catalogos[$campo] as $id=>$valor): ?><option value="<?= (int)$id ?>" <?= (string)$id===(string)$actual?'selected':'' ?>><?= dmH($valor) ?></option><?php endforeach; ?></select></label>
+<?php elseif($campo==='id_producto'): ?>
+<label>Producto<select class="form-select" name="id_producto" required><option value="">Selecciona un producto</option>
+<?php foreach($productos as $id=>$prod): ?><option value="<?= (int)$id ?>" data-precio="<?= dmH($prod['precio_base']) ?>" <?= (string)$id===(string)($registro['id_producto']??'')?'selected':'' ?>><?= dmH($prod['nombre_producto']) ?></option><?php endforeach; ?></select></label>
+<?php elseif($campo==='cantidad'): ?><label>Cantidad<input class="form-control" name="cantidad" type="number" min="1" step="1" required value="<?= (int)($registro['cantidad']??1) ?>"></label>
+<?php else: ?><label><?= ['fecha_pedido'=>'Fecha de pedido','fecha_estimada_entrega'=>'Fecha de entrega','fecha_pago'=>'Fecha de pago'][$campo] ?>
+<input type="date" name="<?= $campo ?>" class="form-control" required value="<?= dmH($registro[$campo]??($campo==='fecha_pedido'?$hoy:'')) ?>"></label>
+<?php endif; endforeach; ?></div>
+<p class="dm-linea"><span>Precio unitario <b data-unitario></b></span><strong>Subtotal <output aria-live="polite"></output></strong></p>
+<button class="dm-btn dm-fuerte"><?= $registro?'Guardar cambios':'Crear pedido' ?></button></form></dialog>
+<?php endforeach; ?></section>
+<script>
+(() => {
+    const root = document.getElementById('dm-pedidos');
+    root.querySelectorAll('[data-abrir]').forEach(button => button.addEventListener('click', () => {
+        document.getElementById(button.dataset.abrir).showModal();
+    }));
+    root.querySelectorAll('[data-cerrar]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
+    root.querySelectorAll('.dm-eliminar').forEach(form => form.addEventListener('submit', event => {
+        if (!confirm('¿Retirar el pedido ' + form.dataset.codigo + ' de la lista?')) event.preventDefault();
+    }));
+    const formato = new Intl.NumberFormat('es-CO', {style:'currency', currency:'COP',minimumFractionDigits:0,maximumFractionDigits:2});
+    root.querySelectorAll('.dm-editor').forEach(form => {
+        const campos = form.elements;
+        function actualizar() {
+            const producto = campos.id_producto;
+            const precio = producto.value && producto.value === form.dataset.original
+                ? Number(form.dataset.precio) : Number(producto.selectedOptions[0]?.dataset.precio || 0);
+            campos.fecha_estimada_entrega.min = campos.fecha_pedido.value;
+            form.querySelector('[data-unitario]').textContent = formato.format(precio);
+            form.querySelector('output').value = formato.format(precio * Number(campos.cantidad.value));
+        }
+        form.addEventListener('input', actualizar);
+        actualizar();
+    });
+    const editar = document.getElementById('dm-editar');
+    if (editar) {
+        editar.showModal();
+        const url = new URL(location.href);
+        url.searchParams.delete('editar');
+        history.replaceState(null, '', url);
+    }
+})();
+</script>
+<?php include __DIR__ . '/partials/footer.php'; ?>

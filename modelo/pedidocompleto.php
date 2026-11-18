@@ -499,5 +499,16 @@ $stmt->bindValue(
         $stmt->execute();
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
+    // La condición sobre el estado anterior evita aplicar dos veces un avance.
+    public function cambiar_estado($id, $anterior, $nuevo)
+    {
+        $sql = "UPDATE pedido_completo pc
+                INNER JOIN estado_pedido ep ON ep.id_estado_pedido = :nuevo AND ep.estado = 1
+                SET pc.id_estado_pedido = ep.id_estado_pedido
+                WHERE pc.id_pedido = :id AND pc.estado = 1 AND pc.id_estado_pedido = :anterior";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['nuevo' => $nuevo, 'id' => $id, 'anterior' => $anterior]);
+        return $stmt->rowCount() === 1;
+    }
+
 }
-?>
