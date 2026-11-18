@@ -18,6 +18,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // password_verify compara la clave escrita con el hash guardado en contrasena_hash
     if ($usuario && password_verify($clave, $usuario['contrasena_hash'])) {
+
+        // Cambia el ID de sesion al iniciar sesion (evita robo de sesion)
+        session_regenerate_id(true);
+
         $_SESSION['id_usuario'] = $usuario['id_usuario'];
         $_SESSION['Nombre'] = $usuario['nombre_completo'];
         $_SESSION['id_roles'] = $usuario['id_roles'];
@@ -27,16 +31,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rol = $rolesModel->buscar_rol($usuario['id_roles']);
         $_SESSION['nombre_rol'] = $rol ? $rol['nombre_rol'] : '';
 
-// El Vendedor entra directo a Nueva Venta, los demas roles ven el Dashboard
-if ($_SESSION['nombre_rol'] === 'Vendedor') {
-    header("Location: ../vista/nuevaventa.php");
-} else {
-    header("Location: ../index.php");
-}
-exit();
-
-        header("Location: ../index.php");
+        // El Vendedor entra directo a Nueva Venta, los demas roles ven el Dashboard
+        if ($_SESSION['nombre_rol'] === 'Vendedor') {
+            header("Location: ../vista/nuevaventa.php");
+        } else {
+            header("Location: ../index.php");
+        }
         exit();
+
     } else {
         header("Location: ../vista/login.php?error=1");
         exit();

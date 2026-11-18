@@ -4,6 +4,12 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// ---- GUARDIA: sin usuario logueado no se entra ----
+if (empty($_SESSION['id_usuario'])) {
+    header("Location: /Dulce_Micro/vista/login.php");
+    exit();
+}
+
 $tiempo_limite = 900;
 if (isset($_SESSION['ultima_actividad']) && (time() - $_SESSION['ultima_actividad'] > $tiempo_limite)) {
     session_unset();
@@ -187,7 +193,7 @@ $paginaActual = basename($_SERVER['PHP_SELF']);
                              data-bs-toggle="modal"
                              data-bs-target="#modalAvatar"
                              title="Cambiar foto de perfil">
-                        <span class="me-3" style="color: rgba(255,255,255,.9);">Hola, <?= htmlspecialchars($_SESSION['Nombre']) ?></span>
+                        <span class="me-3" style="color: rgba(255,255,255,.9);">Hola, <?= htmlspecialchars($_SESSION['Nombre'] ?? '') ?></span>
                         <a href="/Dulce_Micro/vista/logout.php" class="btn btn-sm btn-outline-light">
                             <i class="fa-solid fa-right-from-bracket"></i> Cerrar sesion
                         </a>

@@ -4,6 +4,12 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// ---- GUARDIA: sin usuario logueado no se entra ----
+if (empty($_SESSION['id_usuario'])) {
+    header("Location: /Dulce_Micro/vista/login.php");
+    exit();
+}
+
 $tiempo_limite = 900;
 if (isset($_SESSION['ultima_actividad']) && (time() - $_SESSION['ultima_actividad'] > $tiempo_limite)) {
     session_unset();
